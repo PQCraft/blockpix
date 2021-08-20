@@ -20,7 +20,7 @@ uint16_t _bp_dh = 0;
 uint16_t bp_width = 0;
 uint16_t bp_height = 0;
 
-sigset_t intmask;
+sigset_t intmask, oldmask;
 
 struct termios term, restore;
 
@@ -35,19 +35,20 @@ bool bp_init() {
     if (sigemptyset(&intmask) == -1 || sigaddset(&intmask, SIGINT) == -1 || sigaddset(&intmask, SIGWINCH) == -1) return false;
     for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
     bp_smart_render();
+    fflush(stdout);
     return true;
 }
 
 void bp_quit() {
     putchar('\n');
     fflush(stdout);
-    free(_bp_data);
-    _bp_data = NULL;
+    bp_silent_quit();
 }
 
 void bp_silent_quit() {
     free(_bp_data);
     _bp_data = NULL;
+    fflush(stdout);
 }
 
 void bp_resize() {
@@ -88,8 +89,10 @@ void bp_set(uint16_t x, uint16_t y, uint32_t c) {
     _bp_data[x + y * _bp_dw] = c;
 }
 
+bool sigcheck = true;
+
 void bp_render() {
-    sigprocmask(SIG_BLOCK, &intmask, NULL);
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &intmask, &oldmask);
     tcgetattr(0, &term);
     tcgetattr(0, &restore);
     term.c_lflag &= ~(ICANON|ECHO);
@@ -97,6 +100,7 @@ void bp_render() {
     uint32_t i = 0;
     uint32_t j = _bp_dw;
     uint16_t ph = bp_height / 2;
+    fflush(stdout);
     for (uint16_t y = 0; y < ph;) {
         printf("\e[%u;1H", ++y);
         for (uint16_t x = 0; x < bp_width; ++x) {
@@ -112,11 +116,20 @@ void bp_render() {
     fputs("\e[0m", stdout);
     fflush(stdout);
     tcsetattr(0, TCSANOW, &restore);
-    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
+    if (sigcheck) {
+        sigset_t tmpset;
+        sigpending(&tmpset);
+        if (sigismember(&tmpset, SIGINT) || sigismember(&tmpset, SIGWINCH)) {
+            sigcheck = false;
+            bp_render();
+            sigcheck = true;
+        }
+    }
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
 }
 
 void bp_smart_render() {
-    sigprocmask(SIG_BLOCK, &intmask, NULL);
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &intmask, &oldmask);
     tcgetattr(0, &term);
     tcgetattr(0, &restore);
     term.c_lflag &= ~(ICANON|ECHO);
@@ -150,7 +163,16 @@ void bp_smart_render() {
     fputs("\e[0m", stdout);
     fflush(stdout);
     tcsetattr(0, TCSANOW, &restore);
-    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
+    if (sigcheck) {
+        sigset_t tmpset;
+        sigpending(&tmpset);
+        if (sigismember(&tmpset, SIGINT) || sigismember(&tmpset, SIGWINCH)) {
+            sigcheck = false;
+            bp_smart_render();
+            sigcheck = true;
+        }
+    }
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
 }
 
 void bp_clear() {

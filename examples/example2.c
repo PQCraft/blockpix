@@ -13,9 +13,16 @@ void wait_us(uint64_t d) {
     nanosleep(&dts, NULL);
 }
 
+void clean_quit() {
+    bp_quit();
+    printf("Exiting...\n");
+    exit(0);
+}
+
 int main (void) {
     srand(clock());
     signal(SIGWINCH, bp_resize);
+    signal(SIGINT, clean_quit);
     bp_init();
     uint8_t ri = rand();
     uint8_t gi = rand();
@@ -38,7 +45,7 @@ int main (void) {
         if (rt < ri) ++rt;
         if (gt < gi) ++gt;
         if (bt < bi) ++bt;
-        bp_smart_render();
+        bp_render();
         wait_us(25000);
     }
     while (1) {
