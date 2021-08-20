@@ -1,5 +1,5 @@
 #ifndef BLOCKPIX
-#define BLOCKPIX 21082000
+#define BLOCKPIX 21082001
 #define BLOCKPIX_INCLUDE_BUILD BLOCKPIX
 
 #include <stdint.h>
@@ -11,6 +11,7 @@ extern uint16_t bp_height;
 
 bool bp_init();
 void bp_quit();
+void bp_silent_quit();
 uint32_t bp_color(uint8_t, uint8_t, uint8_t);
 void bp_set(uint16_t, uint16_t, uint32_t);
 void bp_resize();

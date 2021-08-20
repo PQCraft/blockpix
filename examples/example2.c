@@ -32,7 +32,7 @@ int main (void) {
     while (rt < ri || gt < gi || bt < bi) {
         for (int y = 0; y < bp_height; ++y) {
             for (int x = 0; x < bp_width; ++x) {
-                bp_set(x, y, bp_color((uint8_t)(rt * ((double)x / (double)bp_width)), (uint8_t)(gt - (gt * ((double)x / (double)bp_width))), (uint8_t)(bt * ((double)y / (double)bp_height))));
+                bp_set(x, y, bp_color((uint8_t)(rt * ((double)x / ((double)bp_width - 1))), (uint8_t)(gt - (gt * ((double)x / ((double)bp_width - 1)))), (uint8_t)(bt * ((double)y / ((double)bp_height - 1)))));
             }
         }
         if (rt < ri) ++rt;
@@ -44,7 +44,7 @@ int main (void) {
     while (1) {
         for (int y = 0; y < bp_height; ++y) {
             for (int x = 0; x < bp_width; ++x) {
-                bp_set(x, y, bp_color((uint8_t)(ri * ((double)x / (double)bp_width)), (uint8_t)(gi - (gi * ((double)x / (double)bp_width))), (uint8_t)(bi * ((double)y / (double)bp_height))));
+                bp_set(x, y, bp_color((uint8_t)(ri * ((double)x / ((double)bp_width - 1))), (uint8_t)(gi - (gi * ((double)x / ((double)bp_width - 1)))), (uint8_t)(bi * ((double)y / ((double)bp_height - 1)))));
             }
         }
         if (ri == 255) ro = -1;
@@ -56,7 +56,7 @@ int main (void) {
         ri += ro;
         gi += go;
         bi += bo;
-        bp_smart_render();
+        bp_render();
         wait_us(25000);
     }
     bp_quit();

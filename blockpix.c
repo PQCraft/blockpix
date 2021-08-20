@@ -1,5 +1,8 @@
 //▄
 #include "blockpix.h"
+
+uint32_t BLOCKPIX_LINKED_BUILD = BLOCKPIX_INCLUDE_BUILD;
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -22,24 +25,33 @@ sigset_t intmask;
 struct termios term, restore;
 
 bool bp_init() {
+    if (_bp_data) return false;
     bp_update_size();
     _bp_dw = bp_width;
     _bp_dh = bp_height;
     uint32_t dsize = (_bp_dw * _bp_dh) * sizeof(uint32_t);
     if (!(_bp_data = malloc(dsize))) return false;
     memset(_bp_data, 0, dsize);
-    for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
-    fputs("\e[H", stdout);
-    fflush(stdout);
     if (sigemptyset(&intmask) == -1 || sigaddset(&intmask, SIGINT) == -1 || sigaddset(&intmask, SIGWINCH) == -1) return false;
+    for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
+    bp_smart_render();
     return true;
 }
 
 void bp_quit() {
+    putchar('\n');
+    fflush(stdout);
     free(_bp_data);
+    _bp_data = NULL;
+}
+
+void bp_silent_quit() {
+    free(_bp_data);
+    _bp_data = NULL;
 }
 
 void bp_resize() {
+    sigprocmask(SIG_BLOCK, &intmask, NULL);
     bp_update_size();
     if (bp_width == _bp_dw && bp_height == _bp_dh) return;
     uint32_t dsize = (bp_width * bp_height) * sizeof(uint32_t);
@@ -58,6 +70,7 @@ void bp_resize() {
     _bp_data = _bp_data_new;
     _bp_dw = bp_width;
     _bp_dh = bp_height;
+    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
 }
 
 void bp_update_size() {

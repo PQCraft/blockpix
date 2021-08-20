@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <blockpix.h>
-#include <time.h>
-#include <sys/time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <time.h>
 
 int main (void) {
     srand(clock());
@@ -17,7 +16,6 @@ int main (void) {
             }
         }
         bp_render();
-        //sleep(1);
     }
     bp_quit();
     return 0;
