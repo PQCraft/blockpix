@@ -1,6 +1,7 @@
 LIBA := libblockpix.a
 CC = gcc
-INSTDIR = /usr/lib
+INSTDIR = /usr/lib/
+HINSTDIR = /usr/include/
 LIBSRCS := $(shell ls *.c)
 LIBOBJS := $(addsuffix .o, $(basename $(LIBSRCS)))
 EGSRCS := $(shell find ./examples -name '*.c')
@@ -35,11 +36,11 @@ clean: clean_examples clean_lib
 
 install: $(LIBA)
 	@cp $(LIBA) $(INSTDIR)
-	@cp $(LIBSRCDIR)/blockpix.h /usr/include/
+	@cp blockpix.h $(HINSTDIR)
 
 remove:
 	@rm $(INSTDIR)/$(LIBA)
-	@rm $(INSTDIR)/blockpix.h
+	@rm $(HINSTDIR)/blockpix.h
 
 reinstall: remove clean $(LIBA) install
 
