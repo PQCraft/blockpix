@@ -111,7 +111,8 @@ int main(int argc, char **argv)
     bp_init();
 
     create_mandelbrot();
-    bp_render();
+    bp_smart_render();
 
     bp_quit();
 }
+

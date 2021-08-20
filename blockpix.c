@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include <signal.h>
+#include <termios.h>
 
 void bp_update_size();
 
@@ -14,6 +16,10 @@ uint16_t _bp_dh = 0;
 
 uint16_t bp_width = 0;
 uint16_t bp_height = 0;
+
+sigset_t intmask;
+
+struct termios term, restore;
 
 bool bp_init() {
     bp_update_size();
@@ -25,6 +31,7 @@ bool bp_init() {
     for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
     fputs("\e[H", stdout);
     fflush(stdout);
+    if (sigemptyset(&intmask) == -1 || sigaddset(&intmask, SIGINT) == -1 || sigaddset(&intmask, SIGWINCH) == -1) return false;
     return true;
 }
 
@@ -69,16 +76,18 @@ void bp_set(uint16_t x, uint16_t y, uint32_t c) {
 }
 
 void bp_render() {
-    //printf("\e[0m[%ux%u]\n", bp_width, bp_height);
-    //return;
+    sigprocmask(SIG_BLOCK, &intmask, NULL);
+    tcgetattr(0, &term);
+    tcgetattr(0, &restore);
+    term.c_lflag &= ~(ICANON|ECHO);
+    tcsetattr(0, TCSANOW, &term);
     uint32_t i = 0;
     uint32_t j = _bp_dw;
-    //srcoff *= 2;
     uint16_t ph = bp_height / 2;
     for (uint16_t y = 0; y < ph;) {
         printf("\e[%u;1H", ++y);
         for (uint16_t x = 0; x < bp_width; ++x) {
-            printf("\e[38;2;%u;%u;%um\e[48;2;%u;%u;%um▄",\
+            printf("\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▄",\
             (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j],\
             (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i]);
             ++i;
@@ -89,5 +98,56 @@ void bp_render() {
     }
     fputs("\e[0m", stdout);
     fflush(stdout);
+    tcsetattr(0, TCSANOW, &restore);
+    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
+}
+
+void bp_smart_render() {
+    sigprocmask(SIG_BLOCK, &intmask, NULL);
+    tcgetattr(0, &term);
+    tcgetattr(0, &restore);
+    term.c_lflag &= ~(ICANON|ECHO);
+    tcsetattr(0, TCSANOW, &term);
+    uint32_t i = 0;
+    uint32_t j = _bp_dw;
+    uint16_t ph = bp_height / 2;
+    uint32_t oldfg = 0;
+    uint32_t oldbg = 0;
+    fputs("\e[38;2;0;0;0m\e[48;2;0;0;0m", stdout);
+    for (uint16_t y = 0; y < ph;) {
+        printf("\e[%u;1H", ++y);
+        for (uint16_t x = 0; x < bp_width; ++x) {
+            if (_bp_data[j] != oldfg) {
+                printf("\e[38;2;%u;%u;%um",\
+                (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+                oldfg = _bp_data[j];
+            }
+            if (_bp_data[i] != oldbg) {
+                printf("\e[48;2;%u;%u;%um",\
+                (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i]);
+                oldbg = _bp_data[i];
+            }
+            printf("▄");
+            ++i;
+            ++j;
+        }
+        i += _bp_dw;
+        j += _bp_dw;
+    }
+    fputs("\e[0m", stdout);
+    fflush(stdout);
+    tcsetattr(0, TCSANOW, &restore);
+    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
+}
+
+void bp_clear() {
+    memset(_bp_data, 0, (_bp_dw * _bp_dh) * sizeof(uint32_t));
+}
+
+void bp_fill(uint32_t c) {
+    uint32_t dsize = (_bp_dw * _bp_dh) * sizeof(uint32_t);
+    for (uint32_t dpos = 0; dpos < dsize; ++dpos) {
+        _bp_data[dpos] = c;
+    }
 }
 

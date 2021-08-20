@@ -26,10 +26,10 @@ $(LIBA): $(LIBOBJS)
 	@$(AR) rcs $@ $(LIBOBJS)
 
 clean_examples:
-	@$(RM) $(EXBINS)
+	@rm -f $(EGBINS)
 
 clean_lib:
-	@$(RM) $(LIBOBJS) $(LIBA)
+	@rm -f $(LIBOBJS) $(LIBA)
 
 clean: clean_examples clean_lib
 
@@ -38,8 +38,8 @@ install: $(LIBA)
 	@cp $(LIBSRCDIR)/blockpix.h /usr/include/
 
 remove:
-	@$(RM) $(INSTDIR)/$(LIBA)
-	@$(RM) $(INSTDIR)/blockpix.h
+	@rm $(INSTDIR)/$(LIBA)
+	@rm $(INSTDIR)/blockpix.h
 
 reinstall: remove clean $(LIBA) install
 

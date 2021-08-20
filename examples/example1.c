@@ -10,7 +10,7 @@ int main (void) {
     srand(clock());
     signal(SIGWINCH, bp_resize);
     bp_init();
-    while (5) {
+    while (1) {
         for (int y = 0; y < bp_height; ++y) {
             for (int x = 0; x < bp_width; ++x) {
                 bp_set(x, y, bp_color(x, rand() % 64, rand() % 96 - y * 8));
