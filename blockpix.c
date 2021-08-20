@@ -89,6 +89,10 @@ void bp_set(uint16_t x, uint16_t y, uint32_t c) {
     _bp_data[x + y * _bp_dw] = c;
 }
 
+uint32_t bp_get(uint16_t x, uint16_t y) {
+    return _bp_data[x + y * _bp_dw];
+}
+
 bool sigcheck = true;
 
 void bp_render() {
