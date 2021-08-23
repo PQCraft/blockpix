@@ -7,7 +7,9 @@
 
 int main (void) {
     srand(clock());
+    #ifndef _WIN32
     signal(SIGWINCH, bp_resize);
+    #endif
     bp_init();
     while (1) {
         for (int y = 0; y < bp_height; ++y) {

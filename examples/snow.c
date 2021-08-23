@@ -6,6 +6,11 @@
 #include <sys/time.h>
 #include <time.h>
 
+#ifndef _WIN32
+    #include <termios.h>
+    struct termios term, restore;
+#endif
+
 int ws;
 float *x = NULL;
 float *y = NULL;
@@ -34,7 +39,7 @@ void wait_us(uint64_t d)
 
 void init_snow()
 {
-    ct = (bp_width * bp_height) / 200;
+    ct = (double)((bp_width * bp_height) / 250);
     x = (float *)realloc(x, ct * sizeof(float));
     y = (float *)realloc(y, ct * sizeof(float));
     f = (float *)realloc(f, ct * sizeof(float));
@@ -56,28 +61,48 @@ void sigwinch_hndl(int sig)
     resize_needed = true;
 }
 
+void exit_hndl(int sig)
+{
+    (void)sig;
+    bp_quit();
+    #ifndef _WIN32
+    tcsetattr(0, TCSANOW, &restore);
+    #endif
+    exit(0);
+}
+
 int main(void)
 {
+    #ifndef _WIN32
     srand(usTime());
+    tcgetattr(0, &term);
+    tcgetattr(0, &restore);
+    term.c_lflag &= ~(ICANON|ECHO);
+    tcsetattr(0, TCSANOW, &term);
+    #endif
     float ws = frand(150) - 75;
     bp_init();
+    #ifndef _WIN32
     signal(SIGWINCH, sigwinch_hndl);
-brk:
+    #endif
+    signal(SIGINT, exit_hndl);
+    signal(SIGQUIT, exit_hndl);
+    signal(SIGTERM, exit_hndl);
+    brk:
     init_snow();
     while (1)
     {
         int cw = (rand() % 16) + 5;
         for (int l = 0; l <= cw; l++)
         {
-            wait_us(35000);
             for (int i = 0; i < ct; i++)
             {
-                bp_safe_set((int)x[i], (int)y[i], 0);
+                bp_immediate_set((int)x[i], (int)y[i], 0);
                 y[i] += f[i];
                 x[i] += w[i];
                 uint8_t tmp = (rand() % 50) + 206;
-                bp_safe_set((int)x[i], (int)y[i], bp_color(tmp, tmp, tmp));
-                if ((int)y[i] >= (bp_height - 2) + (rand() % 2))
+                bp_immediate_set((int)x[i], (int)y[i], bp_color(tmp, tmp, tmp));
+                if ((int)y[i] > bp_height - (rand() % 3) - 1)
                 {
                     x[i] = (rand() % bp_width);
                     y[i] = frand(1);
@@ -85,18 +110,24 @@ brk:
                     w[i] = ((ws / 500) * (frand(0.25) - 0.125)) + (ws / 500);
                 }
             }
-            bp_smart_render();
-            if (rand() % 2)
-                bp_safe_set((rand() % bp_width), bp_height - 2, 0);
+            //bp_smart_render();
+            double tmpr = frand(bp_width * 0.75);
+            if (tmpr >= (double)(bp_width / 2))
+                bp_immediate_set((rand() % bp_width), bp_height - 2, 0);
             if (resize_needed)
             {
                 bp_resize();
                 bp_clear();
+                bp_smart_render();
                 resize_needed = false;
                 goto brk;
             }
+            wait_us(35000);
         }
         ws = frand(150) - 75;
     }
+    #ifndef _WIN32
+    tcsetattr(0, TCSANOW, &restore);
+    #endif
 }
 

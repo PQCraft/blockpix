@@ -1,4 +1,4 @@
-//▄
+//▀
 #include "blockpix.h"
 
 uint32_t BLOCKPIX_LINKED_BUILD = BLOCKPIX_INCLUDE_BUILD;
@@ -6,10 +6,18 @@ uint32_t BLOCKPIX_LINKED_BUILD = BLOCKPIX_INCLUDE_BUILD;
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/ioctl.h>
 #include <string.h>
 #include <signal.h>
-#include <termios.h>
+#ifndef _WIN32
+    #include <sys/ioctl.h>
+    #include <termios.h>
+#else
+    #include <windows.h>
+    #include <wchar.h>
+    #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 4
+    #endif
+#endif
 
 void bp_update_size();
 
@@ -20,9 +28,12 @@ uint16_t _bp_dh = 0;
 uint16_t bp_width = 0;
 uint16_t bp_height = 0;
 
-sigset_t intmask, oldmask;
+#ifndef _WIN32
+sigset_t _bp_intmask, _bp_oldmask;
+struct termios _bp_term, _bp_restore;
+#endif
 
-struct termios term, restore;
+bool sigcheck = true;
 
 bool bp_init() {
     if (_bp_data) return false;
@@ -32,7 +43,15 @@ bool bp_init() {
     uint32_t dsize = (_bp_dw * _bp_dh) * sizeof(uint32_t);
     if (!(_bp_data = malloc(dsize))) return false;
     memset(_bp_data, 0, dsize);
-    if (sigemptyset(&intmask) == -1 || sigaddset(&intmask, SIGINT) == -1 || sigaddset(&intmask, SIGWINCH) == -1) return false;
+    #ifndef _WIN32
+    if (sigemptyset(&_bp_intmask) == -1 || sigaddset(&_bp_intmask, SIGINT) == -1 || sigaddset(&_bp_intmask, SIGWINCH) == -1) return false;
+    #else
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &dwMode)) return false;
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (!SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), dwMode)) return false;
+    _setmode(_fileno(stdout), 0x00020000);
+    #endif
     for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
     bp_smart_render();
     fflush(stdout);
@@ -40,7 +59,11 @@ bool bp_init() {
 }
 
 void bp_quit() {
+    #ifndef _WIN32
     putchar('\n');
+    #else
+    putwchar('\n');
+    #endif
     fflush(stdout);
     bp_silent_quit();
 }
@@ -48,11 +71,12 @@ void bp_quit() {
 void bp_silent_quit() {
     free(_bp_data);
     _bp_data = NULL;
-    fflush(stdout);
 }
 
 void bp_resize() {
-    sigprocmask(SIG_BLOCK, &intmask, NULL);
+    #ifndef _WIN32
+    pthread_sigmask(SIG_SETMASK, &_bp_intmask, &_bp_oldmask);
+    #endif
     bp_update_size();
     if (bp_width == _bp_dw && bp_height == _bp_dh) return;
     uint32_t dsize = (bp_width * bp_height) * sizeof(uint32_t);
@@ -71,14 +95,25 @@ void bp_resize() {
     _bp_data = _bp_data_new;
     _bp_dw = bp_width;
     _bp_dh = bp_height;
-    sigprocmask(SIG_UNBLOCK, &intmask, NULL);
+    #ifndef _WIN32
+    pthread_sigmask(SIG_SETMASK, &_bp_oldmask, NULL);
+    #endif
 }
 
 void bp_update_size() {
+    #ifndef _WIN32
     struct winsize max;
     ioctl(0, TIOCGWINSZ , &max);
     bp_width = max.ws_col;
     bp_height = max.ws_row * 2;
+    #else
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    int tmpret;
+    tmpret = GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+    (void)tmpret;
+    bp_width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    bp_height = 2 * (csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+    #endif
 }
 
 uint32_t bp_color(uint8_t r, uint8_t g, uint8_t b) {
@@ -86,40 +121,82 @@ uint32_t bp_color(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void bp_set(uint16_t x, uint16_t y, uint32_t c) {
-    _bp_data[x + y * _bp_dw] = c;
+    if (x < bp_width && y < bp_height) _bp_data[x + y * _bp_dw] = c;
+}
+
+void bp_immediate_set(uint16_t x, uint16_t y, uint32_t c) {
+    #ifndef _WIN32
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_intmask, &_bp_oldmask);
+    #endif
+    if (x < bp_width && y < bp_height) {
+        uint32_t j = x + y * _bp_dw;
+        if (_bp_data[j] == c) goto bp_immediate_set_skip;
+        _bp_data[j] = c;
+        y /= 2;
+        uint32_t i = x + (y * 2) * _bp_dw;
+        j = i + _bp_dw;
+        printf("\e[s\e[%u;%uH\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▀\e[u", y + 1, x + 1,\
+        (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i],\
+        (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+    }
+    #ifndef _WIN32
+    fputs("\e[0m", stdout);
+    #else
+    fputws(L"\e[0m", stdout);
+    #endif
+    fflush(stdout);
+    bp_immediate_set_skip:;
+    #ifndef _WIN32
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_oldmask, NULL);
+    #endif
 }
 
 uint32_t bp_get(uint16_t x, uint16_t y) {
-    return _bp_data[x + y * _bp_dw];
+    return ((x < bp_width && y < bp_height) ? _bp_data[x + y * _bp_dw] : 0);
 }
 
-bool sigcheck = true;
-
 void bp_render() {
-    if (sigcheck) pthread_sigmask(SIG_SETMASK, &intmask, &oldmask);
-    tcgetattr(0, &term);
-    tcgetattr(0, &restore);
-    term.c_lflag &= ~(ICANON|ECHO);
-    tcsetattr(0, TCSANOW, &term);
+    #ifndef _WIN32
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_intmask, &_bp_oldmask);
+    tcgetattr(0, &_bp_term);
+    tcgetattr(0, &_bp_restore);
+    _bp_term.c_lflag &= ~(ICANON|ECHO);
+    tcsetattr(0, TCSANOW, &_bp_term);
+    #endif
     uint32_t i = 0;
     uint32_t j = _bp_dw;
     uint16_t ph = bp_height / 2;
     fflush(stdout);
     for (uint16_t y = 0; y < ph;) {
+        #ifndef _WIN32
         printf("\e[%u;1H", ++y);
+        #else
+        wprintf(L"\e[%u;1H", ++y);
+        #endif
         for (uint16_t x = 0; x < bp_width; ++x) {
-            printf("\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▄",\
-            (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j],\
-            (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i]);
+            #ifndef _WIN32
+            printf("\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▀",\
+            (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i],\
+            (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+            #else
+            wprintf(L"\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▀",\
+            (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i],\
+            (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+            #endif
             ++i;
             ++j;
         }
         i += _bp_dw;
         j += _bp_dw;
     }
+    #ifndef _WIN32
     fputs("\e[0m", stdout);
+    #else
+    fputws(L"\e[0m", stdout);
+    #endif
     fflush(stdout);
-    tcsetattr(0, TCSANOW, &restore);
+    #ifndef _WIN32
+    tcsetattr(0, TCSANOW, &_bp_restore);
     if (sigcheck) {
         sigset_t tmpset;
         sigpending(&tmpset);
@@ -129,44 +206,74 @@ void bp_render() {
             sigcheck = true;
         }
     }
-    if (sigcheck) pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_oldmask, NULL);
+    #endif
 }
 
 void bp_smart_render() {
-    if (sigcheck) pthread_sigmask(SIG_SETMASK, &intmask, &oldmask);
-    tcgetattr(0, &term);
-    tcgetattr(0, &restore);
-    term.c_lflag &= ~(ICANON|ECHO);
-    tcsetattr(0, TCSANOW, &term);
+    #ifndef _WIN32
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_intmask, &_bp_oldmask);
+    tcgetattr(0, &_bp_term);
+    tcgetattr(0, &_bp_restore);
+    _bp_term.c_lflag &= ~(ICANON|ECHO);
+    tcsetattr(0, TCSANOW, &_bp_term);
+    #endif
     uint32_t i = 0;
     uint32_t j = _bp_dw;
     uint16_t ph = bp_height / 2;
     uint32_t oldfg = 0;
     uint32_t oldbg = 0;
+    #ifndef _WIN32
     fputs("\e[38;2;0;0;0m\e[48;2;0;0;0m", stdout);
+    #else
+    fputws(L"\e[38;2;0;0;0m\e[48;2;0;0;0m", stdout);
+    #endif
     for (uint16_t y = 0; y < ph;) {
+        #ifndef _WIN32
         printf("\e[%u;1H", ++y);
+        #else
+        wprintf(L"\e[%u;1H", ++y);
+        #endif
         for (uint16_t x = 0; x < bp_width; ++x) {
-            if (_bp_data[j] != oldfg) {
+            if (_bp_data[i] != oldfg) {
+                #ifndef _WIN32
                 printf("\e[38;2;%u;%u;%um",\
-                (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
-                oldfg = _bp_data[j];
-            }
-            if (_bp_data[i] != oldbg) {
-                printf("\e[48;2;%u;%u;%um",\
                 (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i]);
-                oldbg = _bp_data[i];
+                #else
+                wprintf(L"\e[38;2;%u;%u;%um",\
+                (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i]);
+                #endif
+                oldfg = _bp_data[i];
             }
-            printf("▄");
+            if (_bp_data[j] != oldbg) {
+                #ifndef _WIN32
+                printf("\e[48;2;%u;%u;%um",\
+                (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+                #else
+                wprintf(L"\e[48;2;%u;%u;%um",\
+                (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+                #endif
+                oldbg = _bp_data[j];
+            }
+            #ifndef _WIN32
+            printf("▀");
+            #else
+            wprintf(L"▀");
+            #endif
             ++i;
             ++j;
         }
         i += _bp_dw;
         j += _bp_dw;
     }
+    #ifndef _WIN32
     fputs("\e[0m", stdout);
+    #else
+    fputws(L"\e[0m", stdout);
+    #endif
     fflush(stdout);
-    tcsetattr(0, TCSANOW, &restore);
+    #ifndef _WIN32
+    tcsetattr(0, TCSANOW, &_bp_restore);
     if (sigcheck) {
         sigset_t tmpset;
         sigpending(&tmpset);
@@ -176,7 +283,8 @@ void bp_smart_render() {
             sigcheck = true;
         }
     }
-    if (sigcheck) pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
+    if (sigcheck) pthread_sigmask(SIG_SETMASK, &_bp_oldmask, NULL);
+    #endif
 }
 
 void bp_clear() {
