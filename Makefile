@@ -1,5 +1,6 @@
 LIBA := libblockpix.a
 CC = gcc
+CPPC = g++
 CFLAGS = -Wall -Wextra -O3
 LIBCFLAGS = $(CFLAGS)
 
@@ -9,23 +10,35 @@ INSTDIR = /usr/lib/
 HINSTDIR = /usr/include/
 LIBSRCS := $(shell ls *.c)
 LIBOBJS := $(addsuffix .o, $(basename $(LIBSRCS)))
-EGSRCS := $(shell find ./examples -name '*.c')
+EGSRCS := $(shell find ./examples -name '*.c' -o -name '*.cpp')
 EGBINS := $(addsuffix .bin, $(basename $(EGSRCS)))
+CROSS = ""
 
 all: $(LIBA)
-examples: $(EGBINS)
+
+.PHONY: examples
+examples:
+	@$(MAKE) $(EGBINS)
 
 %.o: %.c
 	@echo "Compiling object $<"
 	@$(CC) $(LIBCFLAGS) -c $< -o $@
 
 %.bin: %.c $(LIBA)
-	@echo "Compiling example $<"
+	@echo "$(CC) Compiling example $<"
 	@$(CC) -o $@ $< $(CFLAGS) -L. -I. -lblockpix
 
 %.exe: %.c $(LIBA)
 	@echo "Cross-compiling example $<"
 	@$(CC) -o $@ $< $(CFLAGS) -L. -I. -lblockpix
+
+%.bin: %.cpp $(LIBA)
+	@echo "Compiling example $<"
+	@$(CPPC) -o $@ $< $(CFLAGS) -L. -I. -lblockpix -lX11
+
+%.exe: %.cpp $(LIBA)
+	@echo "Cross-compiling example $<"
+	@$(CPPC) -o $@ $< $(CFLAGS) -L. -I. -lblockpix
 
 $(LIBA): $(LIBOBJS)
 	@echo "Generating $@"
@@ -50,11 +63,13 @@ remove:
 
 reinstall: remove clean $(LIBA) install
 
-.PHONY: cross
+#.PHONY: cross
+
 cross:
-	@true #prevents the "Nothing to be done" message
+	$(eval EGBINS = cross $(addsuffix .exe, $(basename $(EGSRCS))))
 	$(eval CC = x86_64-w64-mingw32-gcc)
-	$(eval EGBINS := $(addsuffix .exe, $(basename $(EGSRCS))))
+	$(eval CPPC = x86_64-w64-mingw32-g++)
+	@true #prevents the "Nothing to be done" message
 
 else
 

@@ -8,14 +8,17 @@ uint32_t BLOCKPIX_LINKED_BUILD = BLOCKPIX_INCLUDE_BUILD;
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <wchar.h>
 #ifndef _WIN32
     #include <sys/ioctl.h>
     #include <termios.h>
 #else
     #include <windows.h>
-    #include <wchar.h>
     #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
     #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 4
+    #endif
+    #ifndef _O_U16TEXT
+    #define _O_U16TEXT 0x00020000
     #endif
 #endif
 
@@ -41,7 +44,7 @@ bool bp_init() {
     _bp_dw = bp_width;
     _bp_dh = bp_height;
     uint32_t dsize = (_bp_dw * _bp_dh) * sizeof(uint32_t);
-    if (!(_bp_data = malloc(dsize))) return false;
+    if (!(_bp_data = (uint32_t*)malloc(dsize))) return false;
     memset(_bp_data, 0, dsize);
     #ifndef _WIN32
     if (sigemptyset(&_bp_intmask) == -1 || sigaddset(&_bp_intmask, SIGINT) == -1 || sigaddset(&_bp_intmask, SIGWINCH) == -1) return false;
@@ -50,7 +53,7 @@ bool bp_init() {
     if (!GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &dwMode)) return false;
     dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     if (!SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), dwMode)) return false;
-    _setmode(_fileno(stdout), 0x00020000);
+    _setmode(_fileno(stdout), _O_U16TEXT);
     #endif
     for (uint16_t i = 1; i < _bp_dh / 2; ++i) {putchar('\n');}
     bp_smart_render();
@@ -80,7 +83,7 @@ void bp_resize() {
     bp_update_size();
     if (bp_width == _bp_dw && bp_height == _bp_dh) return;
     uint32_t dsize = (bp_width * bp_height) * sizeof(uint32_t);
-    uint32_t* _bp_data_new = malloc(dsize);
+    uint32_t* _bp_data_new = (uint32_t*)malloc(dsize);
     memset(_bp_data_new, 0, dsize);
     for (uint16_t y = 0; y < _bp_dh && y < bp_height; ++y) {
         uint32_t i = y * bp_width;

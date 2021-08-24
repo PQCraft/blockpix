@@ -25,7 +25,7 @@ int main (void) {
     #ifndef _WIN32
     signal(SIGWINCH, bp_resize);
     #endif
-    signal(SIGINT, clean_quit);
+    signal(SIGINT, (void (*)(int))clean_quit);
     bp_init();
     double ri = (rand() % 256);
     double gi = (rand() % 256);

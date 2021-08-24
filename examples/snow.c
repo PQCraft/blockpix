@@ -11,6 +11,10 @@
     struct termios term, restore;
 #endif
 
+#ifndef SIGQUIT
+#define SIGQUIT SIGTERM
+#endif
+
 int ws;
 float *x = NULL;
 float *y = NULL;
