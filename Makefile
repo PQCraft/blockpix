@@ -1,4 +1,5 @@
 LIBA := libblockpix.a
+SLIB := libblockpix.so
 CC = gcc
 CPPC = g++
 CFLAGS = -Wall -Wextra -O3
@@ -12,20 +13,24 @@ LIBSRCS := $(shell ls *.c)
 LIBOBJS := $(addsuffix .o, $(basename $(LIBSRCS)))
 EGSRCS := $(shell find ./examples -name '*.c' -o -name '*.cpp')
 EGBINS := $(addsuffix .bin, $(basename $(EGSRCS)))
-CROSS = ""
+NSLIB := $(SLIB)
 
-all: $(LIBA)
+all: $(LIBA) $(SLIB) rnfile
 
-.PHONY: examples
+.PHONY: examples rnfile cross
+
 examples:
 	@$(MAKE) $(EGBINS)
 
+rnfile:
+	@mv $(SLIB) $(NSLIB) &> /dev/null || exit 0
+
 %.o: %.c
-	@echo "Compiling object $<"
-	@$(CC) $(LIBCFLAGS) -c $< -o $@
+	@echo "Compiling object $@"
+	@$(CC) $(LIBCFLAGS) -fpic -c $< -o $@
 
 %.bin: %.c $(LIBA)
-	@echo "$(CC) Compiling example $<"
+	@echo "Compiling example $<"
 	@$(CC) -o $@ $< $(CFLAGS) -L. -I. -lblockpix
 
 %.exe: %.c $(LIBA)
@@ -44,11 +49,15 @@ $(LIBA): $(LIBOBJS)
 	@echo "Generating $@"
 	@$(AR) rcs $@ $(LIBOBJS)
 
+$(SLIB): $(LIBOBJS)
+	@echo "Generating $@"
+	@$(CC) -shared $(LIBOBJS) -o $@
+
 clean_examples:
 	@rm -f $(EGBINS)
 
 clean_lib:
-	@rm -f $(LIBOBJS) $(LIBA)
+	@rm -f $(LIBOBJS) $(LIBA) $(NSLIB)
 
 .PHONY: clean
 clean: clean_examples clean_lib
@@ -66,15 +75,21 @@ reinstall: remove clean $(LIBA) install
 #.PHONY: cross
 
 cross:
-	$(eval EGBINS = cross $(addsuffix .exe, $(basename $(EGSRCS))))
-	$(eval CC = x86_64-w64-mingw32-gcc)
-	$(eval CPPC = x86_64-w64-mingw32-g++)
+ifeq ($(MAKECMDGOALS), cross)
+	@$(MAKE) cross all
+else
+	$(eval EGBINS := cross $(addsuffix .exe, $(basename $(EGSRCS))))
+	$(eval CC := x86_64-w64-mingw32-gcc)
+	$(eval CPPC := x86_64-w64-mingw32-g++)
+	$(eval NSLIB := libblockpix.dll)
+endif
 	@true #prevents the "Nothing to be done" message
 
 else
 
 LIBSRCS := $(shell cmd /c "dir /b /a-d *.c")
 LIBOBJS := $(addsuffix .o, $(basename $(LIBSRCS)))
+LIBSHAREDOBJS := $(addsuffix .dll, $(basename $(LIBSRCS)))
 EGSRCS := $(shell cmd /c "dir /b /s /a-d examples\\*.c")
 EGBINS := $(addsuffix .exe, $(basename $(EGSRCS)))
 
@@ -84,6 +99,10 @@ examples: $(EGBINS)
 %.o: %.c
 	@echo Compiling object $<
 	@$(CC) $(LIBCFLAGS) -c $< -o $@
+
+%.dll: %.c
+	@echo Compiling shared object $<
+	@$(CC) $(LIBCFLAGS) -shared -c $< -o $@
 
 %.exe: $(LIBA)
 	@echo Cross-compiling example $<

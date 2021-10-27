@@ -74,12 +74,13 @@ void bp_quit() {
 void bp_silent_quit() {
     free(_bp_data);
     _bp_data = NULL;
+    bp_width = 0;
+    bp_height = 0;
+    _bp_dw = 0;
+    _bp_dh = 0;
 }
 
 void bp_resize() {
-    #ifndef _WIN32
-    pthread_sigmask(SIG_SETMASK, &_bp_intmask, &_bp_oldmask);
-    #endif
     bp_update_size();
     if (bp_width == _bp_dw && bp_height == _bp_dh) return;
     uint32_t dsize = (bp_width * bp_height) * sizeof(uint32_t);
@@ -98,9 +99,6 @@ void bp_resize() {
     _bp_data = _bp_data_new;
     _bp_dw = bp_width;
     _bp_dh = bp_height;
-    #ifndef _WIN32
-    pthread_sigmask(SIG_SETMASK, &_bp_oldmask, NULL);
-    #endif
 }
 
 void bp_update_size() {
@@ -138,9 +136,15 @@ void bp_immediate_set(uint16_t x, uint16_t y, uint32_t c) {
         y /= 2;
         uint32_t i = x + (y * 2) * _bp_dw;
         j = i + _bp_dw;
+        #ifndef _WIN32
         printf("\e[s\e[%u;%uH\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▀\e[u", y + 1, x + 1,\
         (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i],\
         (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+        #else
+        wprintf(L"\e[s\e[%u;%uH\e[38;2;%03u;%03u;%03um\e[48;2;%03u;%03u;%03um▀\e[u", y + 1, x + 1,\
+        (uint8_t)(_bp_data[i] >> 16), (uint8_t)(_bp_data[i] >> 8), (uint8_t)_bp_data[i],\
+        (uint8_t)(_bp_data[j] >> 16), (uint8_t)(_bp_data[j] >> 8), (uint8_t)_bp_data[j]);
+        #endif
     }
     #ifndef _WIN32
     fputs("\e[0m", stdout);
@@ -295,7 +299,7 @@ void bp_clear() {
 }
 
 void bp_fill(uint32_t c) {
-    uint32_t dsize = (_bp_dw * _bp_dh) * sizeof(uint32_t);
+    uint32_t dsize = _bp_dw * _bp_dh;
     for (uint32_t dpos = 0; dpos < dsize; ++dpos) {
         _bp_data[dpos] = c;
     }
